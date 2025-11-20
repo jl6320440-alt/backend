@@ -169,11 +169,24 @@ export const getStudentByCode = async (req, res) => {
 
 export const getStudent = async (req, res) => {
   const { id } = req.params;
+  console.log(`\n========== GET STUDENT REQUEST ==========`);
+  console.log(`Student ID: ${id}`);
+  
   const student = await Student.findById(id)
     .populate("user", "name email avatar phone")
     .populate("classAssigned");
-  if (!student) return res.status(404).json({ message: "Student not found" });
-  res.json({
+  
+  if (!student) {
+    console.log(`Student not found for ID: ${id}`);
+    console.log(`=========================================\n`);
+    return res.status(404).json({ message: "Student not found" });
+  }
+  
+  console.log(`Student Found: ${student.user.name}`);
+  console.log(`User Avatar: ${student.user.avatar}`);
+  console.log(`Avatar Type: ${typeof student.user.avatar}`);
+  
+  const responsePayload = {
     _id: student._id,
     id: student._id,
     studentCode: student.studentCode,
@@ -192,7 +205,12 @@ export const getStudent = async (req, res) => {
     guardianPhone: student.guardianPhone,
     address: student.address,
     rollNumber: student.rollNumber,
-  });
+  };
+  
+  console.log(`Response Payload Avatar: ${responsePayload.avatar}`);
+  console.log(`=========================================\n`);
+  
+  res.json(responsePayload);
 };
 
 export const updateStudent = async (req, res) => {
