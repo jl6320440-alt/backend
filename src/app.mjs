@@ -7,6 +7,7 @@ import path from "path";
 import authRoutes from "./routes/auth.mjs";
 import studentRoutes from "./routes/students.mjs";
 import teacherRoutes from "./routes/teachers.mjs";
+import classRoutes from "./routes/classes.mjs";
 import feeRoutes from "./routes/fees.mjs";
 import aiRoutes from "./routes/ai.mjs";
 import adminRoutes from "./routes/admin.mjs";
@@ -49,6 +50,7 @@ app.get("/", (req, res) =>
 app.use("/api/auth", authRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/teachers", teacherRoutes);
+app.use("/api/classes", classRoutes);
 app.use("/api/fees", feeRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/admin", adminRoutes);

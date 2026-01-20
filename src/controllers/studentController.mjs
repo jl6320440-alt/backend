@@ -1,6 +1,7 @@
 import Joi from "joi";
 import Student from "../models/Student.mjs";
 import User from "../models/User.mjs";
+import ClassModel from "../models/Class.mjs";
 import bcrypt from "bcryptjs";
 import fs from "fs";
 import path from "path";
@@ -97,18 +98,31 @@ export const createStudent = async (req, res) => {
     admissionNumber,
     dob: dob || dateOfBirth,
     parentContact,
-    className: className || classId || "Not Assigned",
+    className: className || "Not Assigned",
     section,
     guardianName,
     guardianPhone,
   };
+
+  // If classId is provided, validate it and set classAssigned
+  if (classId) {
+    const classExists = await ClassModel.findById(classId);
+    if (classExists) {
+      studentPayload.classAssigned = classId;
+      studentPayload.className = classExists.name;
+    }
+  }
   // Auto-generate unique student code if not provided
-  const finalStudentCode = studentCode || await generateUniqueStudentCode((code) => Student.findOne({ studentCode: code }));
+  const finalStudentCode =
+    studentCode ||
+    (await generateUniqueStudentCode((code) =>
+      Student.findOne({ studentCode: code })
+    ));
   studentPayload.studentCode = finalStudentCode;
   const student = await Student.create(studentPayload);
   res
     .status(201)
-    .json({ studentId: student._id, userId: user._id, user, student });
+    .json({ studentId: student._id, studentCode: student.studentCode, userId: user._id, user, student });
 };
 
 export const listStudents = async (req, res) => {
@@ -124,7 +138,8 @@ export const listStudents = async (req, res) => {
     avatar: s.user.avatar,
     phone: s.user.phone,
     admissionNumber: s.admissionNumber,
-    className: s.className,
+    classId: s.classAssigned?._id?.toString(),
+    className: s.classAssigned?.name || s.className,
     section: s.section,
     status: s.status,
     dob: s.dob,
@@ -140,7 +155,8 @@ export const listStudents = async (req, res) => {
 
 export const getStudentByCode = async (req, res) => {
   const { code } = req.params;
-  if (!code) return res.status(400).json({ message: "Student code is required" });
+  if (!code)
+    return res.status(400).json({ message: "Student code is required" });
   const student = await Student.findOne({ studentCode: code })
     .populate("user", "name email avatar phone")
     .populate("classAssigned");
@@ -171,21 +187,21 @@ export const getStudent = async (req, res) => {
   const { id } = req.params;
   console.log(`\n========== GET STUDENT REQUEST ==========`);
   console.log(`Student ID: ${id}`);
-  
+
   const student = await Student.findById(id)
     .populate("user", "name email avatar phone")
     .populate("classAssigned");
-  
+
   if (!student) {
     console.log(`Student not found for ID: ${id}`);
     console.log(`=========================================\n`);
     return res.status(404).json({ message: "Student not found" });
   }
-  
+
   console.log(`Student Found: ${student.user.name}`);
   console.log(`User Avatar: ${student.user.avatar}`);
   console.log(`Avatar Type: ${typeof student.user.avatar}`);
-  
+
   const responsePayload = {
     _id: student._id,
     id: student._id,
@@ -206,10 +222,10 @@ export const getStudent = async (req, res) => {
     address: student.address,
     rollNumber: student.rollNumber,
   };
-  
+
   console.log(`Response Payload Avatar: ${responsePayload.avatar}`);
   console.log(`=========================================\n`);
-  
+
   res.json(responsePayload);
 };
 
@@ -217,6 +233,7 @@ export const updateStudent = async (req, res) => {
   const { id } = req.params;
   const schema = Joi.object({
     className: Joi.string().optional(),
+    classId: Joi.string().optional(),
     section: Joi.string().optional(),
     guardianName: Joi.string().optional(),
     guardianPhone: Joi.string().optional(),
@@ -228,9 +245,19 @@ export const updateStudent = async (req, res) => {
   const { error, value } = schema.validate(req.body);
   if (error) return res.status(400).json({ message: error.message });
 
+  // If classId is provided, validate it and update classAssigned
+  if (value.classId) {
+    const classExists = await ClassModel.findById(value.classId);
+    if (classExists) {
+      value.classAssigned = value.classId;
+      value.className = classExists.name;
+    }
+    delete value.classId; // Remove classId from update payload
+  }
+
   const student = await Student.findByIdAndUpdate(id, value, {
     new: true,
-  }).populate("user", "name email avatar phone");
+  }).populate("user", "name email avatar phone").populate("classAssigned");
   if (!student) return res.status(404).json({ message: "Student not found" });
 
   res.json({
@@ -242,7 +269,8 @@ export const updateStudent = async (req, res) => {
     avatar: student.user.avatar,
     phone: student.user.phone,
     admissionNumber: student.admissionNumber,
-    className: student.className,
+    classId: student.classAssigned?._id?.toString(),
+    className: student.classAssigned?.name || student.className,
     section: student.section,
     status: student.status,
     dob: student.dob,

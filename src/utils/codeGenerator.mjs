@@ -28,3 +28,19 @@ export const generateUniqueStudentCode = async (checkExists, maxRetries = 10) =>
   }
   throw new Error('Failed to generate unique student code after max retries');
 };
+
+/**
+ * Generate a teacher staff code (prefix T + XX###) e.g., T-AB123
+ */
+export const generateTeacherCode = () => {
+  return `T-${generateStudentCode()}`;
+};
+
+export const generateUniqueTeacherCode = async (checkExists, maxRetries = 10) => {
+  for (let i = 0; i < maxRetries; i++) {
+    const code = generateTeacherCode();
+    const exists = await checkExists(code);
+    if (!exists) return code;
+  }
+  throw new Error('Failed to generate unique teacher code after max retries');
+};

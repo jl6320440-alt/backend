@@ -7,29 +7,88 @@ export const createTeacher = async (req, res) => {
   const schema = Joi.object({
     name: Joi.string().required(),
     email: Joi.string().email().required(),
-    password: Joi.string().min(6).required(),
-    staffId: Joi.string().required(),
+    avatar: Joi.string().optional(),
+    password: Joi.string().min(6).optional(),
+    staffId: Joi.string().optional(),
     subjects: Joi.array().items(Joi.string()).optional(),
     qualification: Joi.string().optional(),
     experience: Joi.number().optional(),
-    department: Joi.string().optional()
+    department: Joi.string().optional(),
+    salary: Joi.number().optional(),
+    classes: Joi.array().items(Joi.string()).optional(),
+    phone: Joi.string().optional(),
+    address: Joi.string().optional(),
+    gender: Joi.string().optional(),
+    dateOfBirth: Joi.date().optional()
   });
   const { error, value } = schema.validate(req.body);
   if (error) return res.status(400).json({ message: error.message });
   
-  const { name, email, password, staffId, subjects, qualification, experience, department } = value;
+  let { name, email, password, staffId, subjects, qualification, experience, department, salary, classes } = value;
   const exists = await User.findOne({ email });
   if (exists) return res.status(409).json({ message: 'Email already in use' });
   
+  // generate a password if not provided
+  if (!password) password = Math.random().toString(36).slice(-8);
   const hash = await bcrypt.hash(password, 10);
-  const user = await User.create({ name, email, password: hash, role: 'teacher' });
+
+  // generate sequential staffId if not provided (format T001)
+  if (!staffId) {
+    // use an atomic counter in a 'counters' collection
+    const db = Teacher.collection.conn.db;
+    const res = await db.collection('counters').findOneAndUpdate(
+      { _id: 'teacher' },
+      { $inc: { seq: 1 } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    const seq = (res.value && res.value.seq) || 1;
+    staffId = `T${String(seq).padStart(3, '0')}`;
+  }
+
+  const user = await User.create({ name, email, password: hash, role: 'teacher', phone: value.phone, address: value.address });
+
+  // If avatar provided as data URL, save it to public/uploads and set user.avatar
+  if (value.avatar && typeof value.avatar === 'string' && value.avatar.startsWith('data:')) {
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const matches = value.avatar.match(/^data:(.+);base64,(.+)$/);
+      if (matches) {
+        const mime = matches[1];
+        const ext = mime.split('/').pop() || 'png';
+        const buffer = Buffer.from(matches[2], 'base64');
+        const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+        if (buffer.length <= MAX_BYTES) {
+          const uploadsDir = path.resolve('public', 'uploads');
+          if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+          const filename = `teacher-${user._id}.${ext}`;
+          const filePath = path.join(uploadsDir, filename);
+          fs.writeFileSync(filePath, buffer);
+          const publicUrl = `${req.protocol}://${req.get('host')}/uploads/${filename}`;
+          user.avatar = publicUrl;
+          await user.save();
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to save teacher avatar:', err);
+    }
+  } else if (value.avatar) {
+    // If avatar is a regular URL, save it directly
+    user.avatar = value.avatar;
+    await user.save();
+  }
   const teacher = await Teacher.create({ 
     user: user._id, 
     staffId, 
     subjects: subjects || [],
     qualification,
     experience,
-    department
+    department,
+    salary,
+    classes: classes || [],
+    gender: value.gender,
+    dateOfBirth: value.dateOfBirth,
+    address: value.address
   });
   
   res.status(201).json({ teacherId: teacher._id, userId: user._id, user, teacher });
@@ -48,7 +107,9 @@ export const listTeachers = async (req, res) => {
     subjects: t.subjects,
     qualification: t.qualification,
     experience: t.experience,
-    department: t.department
+    department: t.department,
+    salary: t.salary,
+    classes: t.classes || []
   }));
   res.json(formattedTeachers);
 };
@@ -69,7 +130,9 @@ export const getTeacher = async (req, res) => {
     subjects: teacher.subjects,
     qualification: teacher.qualification,
     experience: teacher.experience,
-    department: teacher.department
+    department: teacher.department,
+    salary: teacher.salary,
+    classes: teacher.classes || []
   });
 };
 
@@ -79,7 +142,9 @@ export const updateTeacher = async (req, res) => {
     subjects: Joi.array().items(Joi.string()).optional(),
     qualification: Joi.string().optional(),
     experience: Joi.number().optional(),
-    department: Joi.string().optional()
+    department: Joi.string().optional(),
+    salary: Joi.number().optional(),
+    classes: Joi.array().items(Joi.string()).optional()
   });
   const { error, value } = schema.validate(req.body);
   if (error) return res.status(400).json({ message: error.message });
